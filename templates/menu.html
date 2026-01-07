@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Menú de Proyectos</title>
+    <style>
+        body { font-family: sans-serif; padding: 40px; background-color: #f4f4f9; }
+        .contenedor-carpetas { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+        .tarjeta-carpeta { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .titulo-carpeta { font-weight: bold; color: #2c3e50; border-bottom: 2px solid #3498db; margin-bottom: 15px; }
+        ul { list-style: none; padding: 0; }
+        li { margin: 8px 0; }
+        
+        /* Estilo para links normales (HTML) */
+        a.link-html { text-decoration: none; color: white; display: block; padding: 8px; background-color: #3498db; border-radius: 4px; }
+        a.link-html:hover { background-color: #2980b9; }
+
+        /* Estilo diferente para archivos Python (.py) */
+        a.link-py { text-decoration: none; color: white; display: block; padding: 8px; background-color: #e67e22; border-radius: 4px; }
+        a.link-py:hover { background-color: #d35400; }
+    </style>
+</head>
+<body>
+    <h1>Mis Proyectos (HTML y Python)</h1>
+    <hr>
+
+    {% if proyectos %}
+        <div class="contenedor-carpetas">
+            {% for carpeta, archivos in proyectos.items() %}
+                <div class="tarjeta-carpeta">
+                    <div class="titulo-carpeta">📂 {{ carpeta }}</div>
+                    <ul>
+                        {% for archivo in archivos %}
+                            <li>
+                                <!-- Detectamos si es py o html para ponerle color distinto -->
+                                {% if archivo.endswith('.py') %}
+                                    <a class="link-py" href="/{{ carpeta }}/{{ archivo }}" target="_blank">
+                                        🐍 Ejecutar: {{ archivo }}
+                                    </a>
+                                {% else %}
+                                    <a class="link-html" href="/{{ carpeta }}/{{ archivo }}" target="_blank">
+                                        📄 Ejecutar: {{ archivo }}
+                                    </a>
+                                {% endif %}
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <h3>No se encontraron archivos .html ni .py</h3>
+    {% endif %}
+</body>
+</html>
