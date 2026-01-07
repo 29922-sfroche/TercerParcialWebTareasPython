@@ -1,7 +1,7 @@
 from flask import Flask
 import mysql.connector
-from vehiculo import Vehiculo
-from matricula import Matricula
+from routes.vehiculo import Vehiculo
+#from matricula import Matricula
 
 # Crea la aplicación Flask (equivalente a index.php)
 app = Flask(__name__)
