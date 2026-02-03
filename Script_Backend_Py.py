@@ -1,227 +1,177 @@
-# Script_Backend_Py.py
-
 import os
 import importlib.util
 import sys
+import traceback
+import re
+import gc
+from io import BytesIO 
 from flask import Flask, render_template, send_from_directory, request
-from flask import send_from_directory
 
-# =========================
-# CONFIGURACIÓN BASE
-# =========================
+# Importaciones para manejar Apps Flask y Middlewares
+from werkzeug.test import Client
+from werkzeug.wrappers import Response
+
+# ==========================================
+# CONFIGURACIÓN INICIAL
+# ==========================================
 directorio_base = os.path.dirname(os.path.abspath(__file__))
-
-# NOTA: Basado en tu estructura, 'templates' está en la raíz de TAREASPY/
-ruta_templates = os.path.join(directorio_base, 'templates') 
+ruta_templates = os.path.join(directorio_base, 'templates')
 
 app = Flask(__name__, template_folder=ruta_templates)
 
-# =========================
-# 🔊 RUTA GLOBAL PARA SONIDOS
-# =========================
-@app.route('/sounds/<path:filename>')
-def servir_sonidos(filename):
-    """
-    Busca el archivo de sonido dentro de cualquier proyecto
-    que tenga una carpeta 'sounds'
-    """
-    # Recorre las subcarpetas dentro de templates/
-    for carpeta in os.listdir(ruta_templates):
-        ruta_proyecto = os.path.join(ruta_templates, carpeta)
-        ruta_sounds = os.path.join(ruta_proyecto, 'sounds')
+# ==========================================
+# LÓGICA DE LIMPIEZA Y EJECUCIÓN
+# ==========================================
 
-        if os.path.isdir(ruta_sounds):
-            archivo = os.path.join(ruta_sounds, filename)
-            if os.path.exists(archivo):
-                return send_from_directory(ruta_sounds, filename)
+def limpiar_modulos_de_directorio(directorio):
+    """Elimina de la memoria de Python cualquier módulo cargado desde una carpeta específica"""
+    directorio = os.path.abspath(directorio)
+    para_eliminar = []
+    for nombre_mod, mod in list(sys.modules.items()):
+        if hasattr(mod, '__file__') and mod.__file__:
+            path_mod = os.path.abspath(mod.__file__)
+            if path_mod.startswith(directorio):
+                para_eliminar.append(nombre_mod)
+    
+    for nombre in para_eliminar:
+        del sys.modules[nombre]
+    
+    # Forzar al recolector de basura
+    gc.collect()
 
-    return "Archivo de sonido no encontrado", 404
-
-# =========================
-# EJECUTAR APP HIJA
-# =========================
-def ejecutar_flask_hijo(ruta_archivo, metodo='GET', datos=None):
+def ejecutar_flask_hijo(ruta_archivo_py, metodo='GET', datos=None, ruta_interna='/'):
+    directorio_script = os.path.dirname(ruta_archivo_py)
+    nombre_modulo = "modulo_dinamico" # Usamos un nombre fijo para evitar saturación
+    
     try:
-        nombre_modulo = os.path.basename(ruta_archivo).replace('.py', '')
+        # 1. Limpieza previa antes de cargar (por si acaso)
+        limpiar_modulos_de_directorio(directorio_script)
         
-        # 1. Cargar el módulo (app.py del proyecto hijo)
-        spec = importlib.util.spec_from_file_location(nombre_modulo, ruta_archivo)
+        # 2. Configuración del cargador
+        spec = importlib.util.spec_from_file_location(nombre_modulo, ruta_archivo_py)
         modulo = importlib.util.module_from_spec(spec)
-
-        # 2. Añadir la ruta del proyecto hijo al path para resolver las IMPORTACIONES ABSOLUTAS
-        sys.path.append(os.path.dirname(ruta_archivo))
+        
+        # Insertar el directorio al inicio de sys.path para que los imports locales funcionen
+        if directorio_script not in sys.path:
+            sys.path.insert(0, directorio_script)
+        
         spec.loader.exec_module(modulo)
-
+        
         if hasattr(modulo, 'app'):
             app_hija = modulo.app
-
-            # 🔑 OBTENER RUTA INTERNA (por ejemplo /argentina/)
-            ruta_a_eliminar = f'/{os.path.basename(os.path.dirname(ruta_archivo))}/{os.path.basename(ruta_archivo)}'
-            subruta = request.path.replace(ruta_a_eliminar, '')
-
-            if not subruta:
-                subruta = '/'
+            app_hija.root_path = directorio_script
             
-            if not subruta.startswith('/'):
-                subruta = '/' + subruta
-            
-            with app_hija.test_client() as cliente:
-                if metodo == 'POST':
-                    data = {}
-                    if datos:
-                        data.update(datos)
+            # Cliente de ejecución
+            cliente = app_hija.test_client()
 
-                    # ✅ reenviar archivos al hijo (multipart/form-data)
-                    for key, f in request.files.items():
-                        if f and f.filename:
-                            try:
-                                f.stream.seek(0)
-                            except Exception:
-                                pass
-                            data[key] = (f.stream, f.filename)
+            try:
+                # Ejecutar la petición dentro del contexto de la app hija
+                with app_hija.app_context():
+                    if metodo == 'POST':
+                        respuesta = cliente.post(ruta_interna, data=datos, follow_redirects=True)
+                    else:
+                        respuesta = cliente.get(ruta_interna, follow_redirects=True)
+                    
+                    # Extraer datos antes de destruir todo
+                    data = respuesta.get_data()
+                    status = respuesta.status_code
+                    headers = dict(respuesta.headers)
+                    return data, status, headers
 
-                    respuesta = cliente.post(subruta, data=data, content_type='multipart/form-data')
-                else:
-                    respuesta = cliente.get(subruta)
+            except Exception as e:
+                return f"<h1>Error en ejecución interna</h1><p>{str(e)}</p>".encode(), 500, {}
+        else:
+            return "<h1>Error</h1><p>No se encontró la variable 'app' en el script.</p>".encode(), 500, {}
 
-                # Devolvemos la data de la respuesta y el código de estado
-                return respuesta.data, respuesta.status_code
-
-        return b"<h1>Error</h1><p>El script no contiene una variable 'app' de Flask.</p>", 500
-
-    except Exception as e:
-        # Importamos traceback solo para logging, no lo mostramos al usuario final
-        # import traceback; traceback.print_exc() 
-        return f"<h1>Error al ejecutar el script</h1><pre>{e}</pre>".encode('utf-8'), 500
-
+    except Exception:
+        return f"<h1>Error Crítico</h1><pre>{traceback.format_exc()}</pre>".encode(), 500, {}
+    
     finally:
-        # 4. Limpiar el sys.path
-        if os.path.dirname(ruta_archivo) in sys.path:
-            sys.path.remove(os.path.dirname(ruta_archivo))
+        # 3. LIMPIEZA PROFUNDA (Esto evita que el servidor se cuelgue)
+        limpiar_modulos_de_directorio(directorio_script)
+        if directorio_script in sys.path:
+            sys.path.remove(directorio_script)
 
+# ==========================================
+# ESCANEO Y RUTAS (Sin cambios importantes aquí)
+# ==========================================
 
-# =========================
-# MENÚ PRINCIPAL DEL LANZADOR
-# =========================
+def escanear_arbol(ruta_actual):
+    estructura = {'archivos': [], 'subcarpetas': {}}
+    try:
+        items = sorted(os.listdir(ruta_actual))
+        for item in items:
+            ruta_completa = os.path.join(ruta_actual, item)
+            if item in ['__pycache__', '.git', 'static', 'venv'] or item == 'menu.html':
+                continue
+            if os.path.isdir(ruta_completa):
+                contenido = escanear_arbol(ruta_completa)
+                if contenido['archivos'] or contenido['subcarpetas']:
+                    estructura['subcarpetas'][item] = contenido
+            elif os.path.isfile(ruta_completa) and item.lower().endswith('.py'):
+                estructura['archivos'].append(item)
+    except Exception: pass
+    return estructura
+
 @app.route('/')
 def menu_principal():
-    estructura_proyectos = {}
+    arbol = escanear_arbol(ruta_templates)
+    return render_template('menu.html', arbol=arbol)
 
-    if os.path.exists(ruta_templates):
-        # Itera sobre los proyectos (subcarpetas dentro de templates/)
-        for nombre in os.listdir(ruta_templates):
-            ruta_completa = os.path.join(ruta_templates, nombre)
-            if os.path.isdir(ruta_completa):
-                archivos = [
-                    a for a in os.listdir(ruta_completa)
-                    if a.lower().endswith(('.html', '.py'))
-                ]
-                if archivos:
-                    estructura_proyectos[nombre] = archivos
-
-        # Archivos sueltos en templates/ (si los hay)
-        sueltos = [
-            a for a in os.listdir(ruta_templates)
-            if os.path.isfile(os.path.join(ruta_templates, a))
-            and a.lower().endswith(('.html', '.py'))
-            and a != 'menu.html'
-        ]
-
-        if sueltos:
-            estructura_proyectos['General (Sin Carpeta)'] = sueltos
-
-    # Este menu.html es el que está en la raíz de TAREASPY/
-    return render_template('menu.html', proyectos=estructura_proyectos)
-
-# =========================
-# SERVIR PROYECTOS (CRÍTICAMENTE CORREGIDO)
-# =========================
-@app.route('/<carpeta>/<path:archivo>', methods=['GET', 'POST'])
-def servir_proyecto(carpeta, archivo):
-
-    if carpeta == 'General (Sin Carpeta)':
-        path_destino = ruta_templates
+@app.route('/ver/<path:ruta_archivo>', methods=['GET', 'POST'])
+def servir_proyecto(ruta_archivo):
+    if '.py' in ruta_archivo:
+        partes = ruta_archivo.split('.py', 1)
+        ruta_script_rel = partes[0] + '.py'
+        ruta_interna = partes[1] if partes[1] else '/'
     else:
-        # path_destino = TAREASPY/templates/AbstractasPOO
-        path_destino = os.path.join(ruta_templates, carpeta)
+        ruta_script_rel = ruta_archivo
+        ruta_interna = '/'
 
-    # El archivo real es el primer componente (ej. AbstractasPOO.py)
-    archivo_base = archivo.split('/')[0] 
+    ruta_abs = os.path.normpath(os.path.join(ruta_templates, ruta_script_rel))
 
-    # ruta_archivo_real = TAREASPY/templates/AbstractasPOO/AbstractasPOO.py
-    ruta_archivo_real = os.path.join(path_destino, archivo_base)
+    if not os.path.exists(ruta_abs):
+        return "404 No encontrado", 404
 
-    if not os.path.exists(ruta_archivo_real):
-        return "Archivo no encontrado", 404
+    # Manejo de archivos estáticos (CSS, Imágenes)
+    extensiones_web = ('.png', '.jpg', '.jpeg', '.gif', '.css', '.js', '.ico')
+    if ruta_interna.lower().endswith(extensiones_web):
+        return send_from_directory(os.path.dirname(ruta_abs), ruta_interna.lstrip('/'))
 
-    if archivo_base.lower().endswith('.py'):
-        metodo = request.method
-        # Pasamos el diccionario de request.form para ejecutar_flask_hijo
-        datos = dict(request.form) if metodo == 'POST' else None 
+    if ruta_abs.endswith('.py'):
+        datos_post = None
+        if request.method == 'POST':
+            datos_post = {}
+            for k, v in request.form.items(): datos_post[k] = v
+            for k, f in request.files.items():
+                datos_post[k] = (BytesIO(f.read()), f.filename, f.mimetype)
+
+        # --- CORRECCIÓN INICIO: Propagar Query String (GET params) ---
+        if request.query_string:
+            qs = request.query_string.decode("utf-8")
+            # Concatenar correctamente dependiendo de si ya existe un '?'
+            if '?' in ruta_interna:
+                ruta_interna += f"&{qs}"
+            else:
+                ruta_interna += f"?{qs}"
+        # --- CORRECCIÓN FIN ---
+
+        res_data, status, headers = ejecutar_flask_hijo(ruta_abs, request.method, datos_post, ruta_interna)
         
-        # 1. Obtener la ruta URL completa que usó el navegador
-        # (ej. /AbstractasPOO/AbstractasPOO.py o /AbstractasPOO/AbstractasPOO.py/subruta)
-        full_external_path = request.path 
-
-        # 2. Ejecutar el archivo Python (AbstractasPOO.py)
-        response_data, status_code = ejecutar_flask_hijo(ruta_archivo_real, metodo=metodo, datos=datos)
-
-        # 3. INTERCEPTAR Y CORREGIR EL HTML (SOLUCIÓN AL ERROR 405)
-        if status_code == 200 and isinstance(response_data, bytes):
+        ctype = headers.get('Content-Type', '')
+        if 'text/html' in ctype:
             try:
-                html_content = response_data.decode('utf-8')
-            except UnicodeDecodeError:
-                # Si falla al decodificar, devolvemos los datos originales
-                return response_data, status_code
+                html = res_data.decode('utf-8')
+                prefix = f"/ver/{ruta_script_rel}"
+                # Inyectar el prefijo en las rutas para que el proxy funcione
+                html = re.sub(r'(src|href|action)=["\'](/.*?)["\']', rf'\1="{prefix}\2"', html)
+                return html, status
+            except: pass
+        return res_data, status
 
-            # Buscar 'action=""' (que pusiste en form_figuras.html) y reemplazarlo
-            # por la URL externa completa.
-            if 'action=""' in html_content:
-                # Reemplazamos el action vacío por la ruta completa.
-                response_data = html_content.replace('action=""', f'action="{full_external_path}"').encode('utf-8')
-            
-        return response_data, status_code
+    return send_from_directory(os.path.dirname(ruta_abs), os.path.basename(ruta_abs))
 
-    elif archivo_base.lower().endswith('.html'):
-        # Si es un HTML, asume que no tiene subrutas de Blueprint
-        if carpeta == 'General (Sin Carpeta)':
-            return render_template(archivo_base)
-        
-        # Renderiza el HTML dentro de la carpeta 
-        return render_template(f'{carpeta}/{archivo_base}')
-
-    else:
-        # Sirve archivos estáticos que están dentro de la carpeta (si los hubiera)
-        return send_from_directory(path_destino, archivo_base)
-
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # carpeta donde está Script_Backend_Py.py
-
-@app.route('/<carpeta>/static/images/<path:filename>')
-def servir_static_hijo(carpeta, filename):
-
-    # 1) Ruta tipo: TAREASPYTHON/POST/static/images
-    ruta1 = os.path.join(BASE_DIR, carpeta, 'static', 'images')
-
-    # 2) Ruta tipo: TAREASPYTHON/templates/POST/static/images
-    ruta2 = os.path.join(ruta_templates, carpeta, 'static', 'images')
-
-    if os.path.isdir(ruta1):
-        archivo1 = os.path.join(ruta1, filename)
-        if os.path.exists(archivo1):
-            return send_from_directory(ruta1, filename)
-
-    if os.path.isdir(ruta2):
-        archivo2 = os.path.join(ruta2, filename)
-        if os.path.exists(archivo2):
-            return send_from_directory(ruta2, filename)
-
-    return "Archivo estático no encontrado en el proyecto", 404
-
-
-# =========================
-# MAIN
-# =========================
 if __name__ == '__main__':
-    # Usamos el puerto 5000 por si acaso
-    app.run(debug=True, port=5000)
+    # threaded=False es MÁS ESTABLE para carga dinámica de módulos
+    # debug=False evita que el reloader bloquee archivos
+    app.run(port=5000, debug=False, threaded=False)

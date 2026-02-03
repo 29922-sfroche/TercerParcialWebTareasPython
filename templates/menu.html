@@ -2,54 +2,152 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Menú de Proyectos</title>
+    <title>Menú de Scripts Python</title>
     <style>
-        body { font-family: sans-serif; padding: 40px; background-color: #f4f4f9; }
-        .contenedor-carpetas { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
-        .tarjeta-carpeta { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .titulo-carpeta { font-weight: bold; color: #2c3e50; border-bottom: 2px solid #3498db; margin-bottom: 15px; }
-        ul { list-style: none; padding: 0; }
-        li { margin: 8px 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; background-color: #f4f4f9; color: #333; }
+        h1 { text-align: center; color: #2c3e50; margin-bottom: 10px; }
+        p.subtitulo { text-align: center; color: #7f8c8d; margin-bottom: 30px; }
         
-        /* Estilo para links normales (HTML) */
-        a.link-html { text-decoration: none; color: white; display: block; padding: 8px; background-color: #3498db; border-radius: 4px; }
-        a.link-html:hover { background-color: #2980b9; }
+        .contenedor-principal { 
+            max-width: 900px; 
+            margin: 0 auto; 
+            background: white; 
+            padding: 30px; 
+            border-radius: 10px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05); 
+        }
 
-        /* Estilo diferente para archivos Python (.py) */
-        a.link-py { text-decoration: none; color: white; display: block; padding: 8px; background-color: #e67e22; border-radius: 4px; }
-        a.link-py:hover { background-color: #d35400; }
+        ul { list-style: none; padding-left: 20px; border-left: 2px solid #ecf0f1; margin-left: 10px; }
+        li { margin: 5px 0; }
+
+        details { margin-bottom: 5px; }
+        summary { 
+            cursor: pointer; 
+            font-weight: bold; 
+            padding: 10px; 
+            background-color: #f7f9f9; 
+            border-radius: 5px; 
+            list-style: none; 
+            display: flex;
+            align-items: center;
+            border: 1px solid #eee;
+            color: #2c3e50;
+        }
+        summary:hover { background-color: #eaf2f8; color: #3498db; }
+        summary::before { content: "📁 "; margin-right: 8px; font-size: 1.2em; }
+        details[open] > summary::before { content: "📂 "; }
+        details[open] > summary { background-color: #ebf5fb; border-color: #d6eaf8; }
+
+        /* Estilo Unificado para Scripts Python */
+        .archivo-link {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            margin-left: 25px;
+            border-radius: 4px;
+            text-decoration: none;
+            color: white;
+            transition: all 0.2s;
+            font-size: 0.95em;
+            margin-bottom: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            
+            /* Color Naranja (Python) para todos */
+            background-color: #e67e22; 
+            border-left: 4px solid #d35400;
+        }
+        .archivo-link:hover { transform: translateX(5px); box-shadow: 0 2px 5px rgba(0,0,0,0.2); background-color: #d35400; }
+
+        .icono { margin-right: 10px; font-size: 1.1em; }
+        .etiqueta { font-size: 0.8em; opacity: 0.8; margin-left: auto; }
+
     </style>
 </head>
 <body>
-    <h1>Mis Proyectos (HTML y Python)</h1>
-    <hr>
+    <h1>🐍 Mis Scripts Python</h1>
+    <p style="padding-left:35%;"><strong>Integrantes: </strong> Angel Sangucho, Ricardo Villegas, Jonathan Tambaco</p>
+    <p style="padding-left:35%;"><b>NRC:</b> 29925</p>	
+    <br>
+    <p class="subtitulo">Explorador de aplicaciondes Flask</p>
+    
+    <div class="contenedor-principal">
+        
+        <!-- MACRO RECURSIVA SIMPLIFICADA -->
+        {% macro render_carpeta(nombre_carpeta, contenido, ruta_padre) %}
+            <li>
+                <details>
+                    <summary>{{ nombre_carpeta }}</summary>
+                    
+                    <!-- Archivos .py -->
+                    {% if contenido.archivos %}
+                        {% for archivo in contenido.archivos %}
+                            
+                            {% set ruta_full = "" %}
+                            {% if ruta_padre %}
+                                {% set ruta_full = ruta_padre ~ '/' ~ archivo %}
+                            {% else %}
+                                {% set ruta_full = archivo %}
+                            {% endif %}
 
-    {% if proyectos %}
-        <div class="contenedor-carpetas">
-            {% for carpeta, archivos in proyectos.items() %}
-                <div class="tarjeta-carpeta">
-                    <div class="titulo-carpeta">📂 {{ carpeta }}</div>
-                    <ul>
-                        {% for archivo in archivos %}
-                            <li>
-                                <!-- Detectamos si es py o html para ponerle color distinto -->
-                                {% if archivo.endswith('.py') %}
-                                    <a class="link-py" href="/{{ carpeta }}/{{ archivo }}" target="_blank">
-                                        🐍 Ejecutar: {{ archivo }}
-                                    </a>
-                                {% else %}
-                                    <a class="link-html" href="/{{ carpeta }}/{{ archivo }}" target="_blank">
-                                        📄 Ejecutar: {{ archivo }}
-                                    </a>
-                                {% endif %}
-                            </li>
+                            <a href="{{ url_for('servir_proyecto', ruta_archivo=ruta_full) }}" 
+                               class="archivo-link" 
+                               target="_blank">
+                                <span class="icono">🐍</span>
+                                {{ archivo }}
+                                <span class="etiqueta">Ejecutar</span>
+                            </a>
                         {% endfor %}
-                    </ul>
-                </div>
-            {% endfor %}
-        </div>
-    {% else %}
-        <h3>No se encontraron archivos .html ni .py</h3>
-    {% endif %}
+                    {% endif %}
+
+                    <!-- Subcarpetas -->
+                    {% if contenido.subcarpetas %}
+                        <ul>
+                            {% for nombre_sub, contenido_sub in contenido.subcarpetas.items() %}
+                                {% set nueva_ruta = "" %}
+                                {% if ruta_padre %}
+                                    {% set nueva_ruta = ruta_padre ~ '/' ~ nombre_sub %}
+                                {% else %}
+                                    {% set nueva_ruta = nombre_sub %}
+                                {% endif %}
+                                
+                                {{ render_carpeta(nombre_sub, contenido_sub, nueva_ruta) }}
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+
+                </details>
+            </li>
+        {% endmacro %}
+
+        <!-- INICIO DEL ÁRBOL -->
+        <ul>
+            {% if arbol.archivos %}
+                 <li>
+                    <details open>
+                        <summary>Raíz (Scripts Sueltos)</summary>
+                         {% for archivo in arbol.archivos %}
+                            <a href="{{ url_for('servir_proyecto', ruta_archivo=archivo) }}" 
+                               class="archivo-link" 
+                               target="_blank">
+                               <span class="icono">🐍</span>
+                               {{ archivo }}
+                            </a>
+                         {% endfor %}
+                    </details>
+                 </li>
+            {% endif %}
+
+            {% if arbol.subcarpetas %}
+                {% for nombre, contenido in arbol.subcarpetas.items() %}
+                    {{ render_carpeta(nombre, contenido, nombre) }}
+                {% endfor %}
+            {% endif %}
+        </ul>
+
+        {% if not arbol.archivos and not arbol.subcarpetas %}
+            <p style="text-align: center; color: #e74c3c;">No se encontraron archivos .py en la carpeta <b>templates</b>.</p>
+        {% endif %}
+
+    </div>
 </body>
 </html>

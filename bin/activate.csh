@@ -9,7 +9,7 @@ alias deactivate 'test $?_OLD_VIRTUAL_PATH != 0 && setenv PATH "$_OLD_VIRTUAL_PA
 # Unset irrelevant variables.
 deactivate nondestructive
 
-setenv VIRTUAL_ENV '/home/stalin/Documentos/Noveno Semestre Octubre 25 Marzo 26/WEB/DeberesParcial/TercerParcial_Python'
+setenv VIRTUAL_ENV '/home/stalin/Documentos/Noveno Semestre Octubre 25 Marzo 26/WEB/Panel_PyhtonWeb - copia'
 
 set _OLD_VIRTUAL_PATH="$PATH"
 setenv PATH "$VIRTUAL_ENV/"bin":$PATH"
@@ -18,8 +18,8 @@ setenv PATH "$VIRTUAL_ENV/"bin":$PATH"
 set _OLD_VIRTUAL_PROMPT="$prompt"
 
 if (! "$?VIRTUAL_ENV_DISABLE_PROMPT") then
-    set prompt = '(TercerParcial_Python) '"$prompt"
-    setenv VIRTUAL_ENV_PROMPT '(TercerParcial_Python) '
+    set prompt = '(Panel_PyhtonWeb - copia) '"$prompt"
+    setenv VIRTUAL_ENV_PROMPT '(Panel_PyhtonWeb - copia) '
 endif
 
 alias pydoc python -m pydoc
